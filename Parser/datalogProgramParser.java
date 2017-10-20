@@ -27,7 +27,7 @@ public class datalogProgramParser {
                 f.printFuction();
             }
         }
-        System.out.println(inference(rules, factPath));
+        semiNaive(rules,factPath);
         for (path a : factPath.getPathFact()) {
             System.out.print(a.getFunctionName() + "(" + a.getPoint1() + "," + a.getPoint2() + ") ");
         }
@@ -129,24 +129,65 @@ public class datalogProgramParser {
         return judge;
     }
 
-    public boolean inference(LinkedList<rule> rules, fact facts) {
-        boolean newFacts = false;
+    public void semiNaive(LinkedList<rule> rules,fact facts){
+        boolean judge=true;
+        do {
+            ArrayList<path> newFacts;
+            newFacts = inference(rules, facts);
+            for (path p:newFacts){
+                System.out.print(p.getFunctionName()+"("+p.getPoint1()+","+p.getPoint2()+") ");
+            }
+            System.out.println();
+            if (newFacts.size()==0){
+                judge=false;
+            }
+            for(path p:newFacts){
+                facts.setPathFact(p);
+            }
+        }while (judge);
+    }
+
+    public ArrayList<path> inference(LinkedList<rule> rules, fact facts) {
+        ArrayList<path> newPath=new ArrayList<>();
         for (rule r : rules) {
-            for (int i = 0; i < facts.getPathFact().size()-r.getEdb().size()+1; i++) {
-                ArrayList<function> substitution = new ArrayList<>();
-                for (int j = 0; j < r.getEdb().size(); j++) {
-                    function f = new function();
-                    f.setVariable(r.getEdb().get(j).getVariable());
-                    if (r.getEdb().get(j).getFunctionName().equals(facts.getFactName())) {
-                        substitution.add(substitute(f, facts.getPathFact().get(i + j)));
+            for (int k = 0; k <facts.getPathFact().size(); k++) {
+                path p=facts.getPathFact().get(k);
+                for (int i = 0; i < facts.getPathFact().size() - r.getEdb().size() + 2; i++) {
+                    ArrayList<function> substitution = new ArrayList<>();
+                    for (int j = 0; j < r.getEdb().size(); j++) {
+                        function f = new function();
+                        f.setVariable(r.getEdb().get(j).getVariable());
+                        if (r.getEdb().get(j).getFunctionName().equals(facts.getFactName())) {
+                            if (j==0){
+                                substitution.add(substitute(f,p));
+                            }else {
+                                substitution.add(substitute(f, facts.getPathFact().get(i + j-1)));
+                            }
+                        }
                     }
-                }
-                if (inferenceStep(substitution, r)) {
-                    newFacts = true;
+                    path judgeDeposit=inferenceStep(substitution,r);
+                    if (judgeDeposit.getPoint1()!=null) {
+                        boolean repetition=false;
+                        for (path check:facts.getPathFact()){
+                            if (check.getPoint1().equals(judgeDeposit.getPoint1())&&check.getPoint2().equals(judgeDeposit.getPoint2())){
+                                repetition=true;
+                                break;
+                            }
+                        }
+                        for (path check:newPath){
+                            if (check.getPoint1().equals(judgeDeposit.getPoint1())&&check.getPoint2().equals(judgeDeposit.getPoint2())){
+                                repetition=true;
+                                break;
+                            }
+                        }
+                        if (!repetition){
+                            newPath.add(judgeDeposit);
+                        }
+                    }
                 }
             }
         }
-        return newFacts;
+        return newPath;
     }
 
     private function substitute(function oneOfEdb, path p) {
@@ -158,8 +199,9 @@ public class datalogProgramParser {
     }
 
 
-    private boolean inferenceStep(ArrayList<function> substitution, rule r) {
-        boolean newFact = true;
+    private path inferenceStep(ArrayList<function> substitution, rule r) {
+        boolean newFact =true;
+        path newPath=new path();
         ArrayList<String> variable=new ArrayList<>();
         outer:
         for (int i = 0; i < substitution.size(); i++) {
@@ -173,6 +215,7 @@ public class datalogProgramParser {
                         String s = r.getIdb().getVariable()[j];
                         if (s.equals(firstLetter)) {
                             variable.add(v.substring(1));
+                            break;
                         }
                     }
                     for (int j = i; j < substitution.size(); j++) {
@@ -189,10 +232,9 @@ public class datalogProgramParser {
             }
         }
         if (newFact) {
-            path newPath = new path(r.getIdb().getFunctionName(),variable.get(0), variable.get(1));
-            factPath.setPathFact(newPath);
+            newPath = new path(r.getIdb().getFunctionName(),variable.get(0), variable.get(1));
         }
-        return newFact;
+        return newPath;
     }
 
     private boolean find(ArrayList<String> remember, String v) {
