@@ -7,7 +7,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class datalogProgramParser {
-    private fact factPath = new fact();
+    private ArrayList<fact> facts = new ArrayList<>();
     private LinkedList<rule> rules = new LinkedList<>();
 
     public static void main(String[] args) {
@@ -16,8 +16,8 @@ public class datalogProgramParser {
 
     public void run() {
         fileReaderAndParse();
-        for (path a : factPath.getPathFact()) {
-            System.out.print(a.getFunctionName() + "(" + a.getPoint1() + "," + a.getPoint2() + ") ");
+        for (fact f:facts) {
+            System.out.print(f.getFunctionName() + "(" + f.getStart() + "," + f.getEnd()+ ") ");
         }
         System.out.println();
         for (rule r : rules) {
@@ -26,10 +26,11 @@ public class datalogProgramParser {
             for (function f : r.getEdb()) {
                 f.printFuction();
             }
+            System.out.println();
         }
-        semiNaive(rules,factPath);
-        for (path a : factPath.getPathFact()) {
-            System.out.print(a.getFunctionName() + "(" + a.getPoint1() + "," + a.getPoint2() + ") ");
+        Naive();
+        for (fact f:facts) {
+            System.out.print(f.getFunctionName() + "(" + f.getStart() + "," + f.getEnd()+ ") ");
         }
     }
 
@@ -48,23 +49,28 @@ public class datalogProgramParser {
             InputStreamReader reader = new InputStreamReader(new FileInputStream(filename));
             BufferedReader br = new BufferedReader(reader);
             String line = "";
-            String pattern = "([a-z]+)(\\=)(\\{)([a-z]+\\(.*\\))";
-            Pattern r = Pattern.compile(pattern);
+            String pattern1 = "(^[a-z]+)(\\([^\\(\\)]+\\)\\.$)";
+            String pattern2 = "([a-z]+\\([^\\(\\)]+\\)){1}(:-)(([a-z]+\\([^\\(\\)]+\\),)*([a-z]+\\([^\\(\\)]+\\)\\.)$)";
+            Pattern r1= Pattern.compile(pattern1);
+            Pattern r2= Pattern.compile(pattern2);
+            boolean finishFacts=false;
             while ((line = br.readLine()) != null) {
-                Matcher m = r.matcher(line);
-                if (m.find()) {
-                    if (m.group(1).equals("path")) {
-                        String content = m.group(4);
-                        String fact[] = content.split("\\.");
-                        factPath.setFactName("p");
-                        for (String s : fact) {
-                            path newFact = new path(s.substring(0, 1), s.substring(2, 3), s.substring(4, 5));
-                            factPath.setPathFact(newFact);
-                        }
+                Matcher m1 = r1.matcher(line);
+                Matcher m2 = r2.matcher(line);
+                if (m1.find()) {
+                    if (finishFacts==false) {
+                            String content = m1.group(2);
+                            fact newFact = new fact(m1.group(1), content.substring(1, 2), content.substring(3, 4));
+                            facts.add(newFact);
+                    }else {
+                        System.out.println("Wrong: sequence is error.");
                     }
-                } else {
+                } else if (m2.find()){
+                    finishFacts=true;
                     rule newRule = parser(line);
                     rules.add(newRule);
+                }else {
+                    System.out.println("Wrong: format is error.");
                 }
             }
         } catch (Exception e) {
@@ -75,12 +81,8 @@ public class datalogProgramParser {
     public rule parser(String formula) {
         int index = formula.indexOf(":-");
         String cause = "", idb = "";
-        if (index == -1) {
-            System.out.println("err:lack :-");
-        } else {
-            cause = formula.substring(index + 2);
-            idb = formula.substring(0, index);
-        }
+        cause = formula.substring(index + 2);
+        idb = formula.substring(0, index);
         rule clause = new rule();
         String pattern = "([a-z]+)(\\()([^\\(\\)]+)(\\))";
         Pattern r = Pattern.compile(pattern);
@@ -129,53 +131,58 @@ public class datalogProgramParser {
         return judge;
     }
 
-    public void semiNaive(LinkedList<rule> rules,fact facts){
+    public void Naive(){
         boolean judge=true;
         do {
-            ArrayList<path> newFacts;
-            newFacts = inference(rules, facts);
-            for (path p:newFacts){
-                System.out.print(p.getFunctionName()+"("+p.getPoint1()+","+p.getPoint2()+") ");
+            ArrayList<fact> newFacts=new ArrayList<>();
+            ArrayList<function> substitution=new ArrayList<>();
+            for (rule r:rules) {
+                int i=0;
+                inference(i, r, newFacts, substitution);
+            }
+            for (fact p:newFacts){
+                System.out.print(p.getFunctionName()+"("+p.getStart()+","+p.getEnd()+") ");
             }
             System.out.println();
             if (newFacts.size()==0){
                 judge=false;
             }
-            for(path p:newFacts){
-                facts.setPathFact(p);
+            for(fact p:newFacts){
+                facts.add(p);
             }
         }while (judge);
     }
 
-    public ArrayList<path> inference(LinkedList<rule> rules, fact facts) {
-        ArrayList<path> newPath=new ArrayList<>();
-        for (rule r : rules) {
-            for (int k = 0; k <facts.getPathFact().size(); k++) {
-                path p=facts.getPathFact().get(k);
-                for (int i = 0; i < facts.getPathFact().size() - r.getEdb().size() + 2; i++) {
-                    ArrayList<function> substitution = new ArrayList<>();
-                    for (int j = 0; j < r.getEdb().size(); j++) {
-                        function f = new function();
-                        f.setVariable(r.getEdb().get(j).getVariable());
-                        if (r.getEdb().get(j).getFunctionName().equals(facts.getFactName())) {
-                            if (j==0){
-                                substitution.add(substitute(f,p));
-                            }else {
-                                substitution.add(substitute(f, facts.getPathFact().get(i + j-1)));
-                            }
-                        }
-                    }
-                    path judgeDeposit=inferenceStep(substitution,r);
-                    if (judgeDeposit.getPoint1()!=null) {
+    public void inference(int i,rule r,ArrayList<fact> newPath,ArrayList<function> substitution) {
+
+//        for (rule r : rules) {
+//            for (int k = 0; k <facts.size(); k++) {
+//                fact p=facts.get(k);
+//                for (int i = 0; i < facts.size() - r.getEdb().size() + 2; i++) {
+//                    ArrayList<function> substitution = new ArrayList<>();
+//                    for (int j = 0; j < r.getEdb().size(); j++) {
+//                        function f = new function();
+//                        f.setVariable(r.getEdb().get(j).getVariable());
+//                        if (r.getEdb().get(j).getFunctionName().equals(facts.get())) {
+//                            if (j==0){
+//                                substitution.add(substitute(f,p));
+//                            }else {
+//                                substitution.add(substitute(f, facts.get(i + j-1)));
+//                            }
+//                        }
+//        }
+        if (i>=r.getEdb().size()){
+            fact judgeDeposit=inferenceStep(substitution,r);
+                    if (!judgeDeposit.getStart().equals("")) {
                         boolean repetition=false;
-                        for (path check:facts.getPathFact()){
-                            if (check.getPoint1().equals(judgeDeposit.getPoint1())&&check.getPoint2().equals(judgeDeposit.getPoint2())){
+                        for (fact check:facts){
+                            if (check.getFunctionName().equals(judgeDeposit.getFunctionName())&&check.getStart().equals(judgeDeposit.getStart())&&check.getEnd().equals(judgeDeposit.getEnd())){
                                 repetition=true;
                                 break;
                             }
                         }
-                        for (path check:newPath){
-                            if (check.getPoint1().equals(judgeDeposit.getPoint1())&&check.getPoint2().equals(judgeDeposit.getPoint2())){
+                        for (fact check:newPath){
+                            if (check.getFunctionName().equals(judgeDeposit.getFunctionName())&&check.getStart().equals(judgeDeposit.getStart())&&check.getEnd().equals(judgeDeposit.getEnd())){
                                 repetition=true;
                                 break;
                             }
@@ -184,24 +191,36 @@ public class datalogProgramParser {
                             newPath.add(judgeDeposit);
                         }
                     }
+        }else {
+            for (fact f:facts){
+                if (r.getEdb().get(i).getFunctionName().equals(f.getFunctionName())) {
+                    function func = new function();
+                    func.setVariable(r.getEdb().get(i).getVariable());
+                    substitution.add(substitute(func, f));
+                    inference(i + 1, r, newPath, substitution);
                 }
             }
         }
-        return newPath;
+        if (substitution.size()>0) {
+            substitution.remove(substitution.size() - 1);
+        }
+//                }
+//            }
+//        }
     }
 
-    private function substitute(function oneOfEdb, path p) {
+    private function substitute(function oneOfEdb, fact p) {
         String s[] = new String[2];
-        s[0] = oneOfEdb.getVariable()[0] + p.getPoint1();
-        s[1] = oneOfEdb.getVariable()[1] + p.getPoint2();
+        s[0] = oneOfEdb.getVariable()[0] + p.getStart();
+        s[1] = oneOfEdb.getVariable()[1] + p.getEnd();
         oneOfEdb.setVariable(s);
         return oneOfEdb;
     }
 
 
-    private path inferenceStep(ArrayList<function> substitution, rule r) {
+    private fact inferenceStep(ArrayList<function> substitution, rule r) {
         boolean newFact =true;
-        path newPath=new path();
+        fact newPath=new fact();
         ArrayList<String> variable=new ArrayList<>();
         outer:
         for (int i = 0; i < substitution.size(); i++) {
@@ -232,7 +251,7 @@ public class datalogProgramParser {
             }
         }
         if (newFact) {
-            newPath = new path(r.getIdb().getFunctionName(),variable.get(0), variable.get(1));
+            newPath = new fact(r.getIdb().getFunctionName(),variable.get(0), variable.get(1));
         }
         return newPath;
     }

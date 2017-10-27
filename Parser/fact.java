@@ -4,32 +4,40 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 
 public class fact {
-    private ArrayList<path> pathFact=new ArrayList<>();
-    private String factName;
+    private String functionName=new String();
+    private String start=new String();
+    private String end=new String();
+
+    public fact(String functionName, String start, String end) {
+        this.functionName = functionName;
+        this.start = start;
+        this.end = end;
+    }
 
     public fact() {
     }
 
-    public ArrayList<path> getPathFact() {
-
-        return pathFact;
+    public String getFunctionName() {
+        return functionName;
     }
 
-    public void setPathFact(path pathFact) {
-        this.pathFact.add(pathFact);
+    public void setFunctionName(String functionName) {
+        this.functionName = functionName;
     }
 
-    public String getFactName() {
-        return factName;
+    public String getStart() {
+        return start;
     }
 
-    public void setFactName(String factName) {
-        this.factName = factName;
+    public void setStart(String start) {
+        this.start = start;
     }
 
-    public fact(ArrayList<path> pathFact, String factName) {
+    public String getEnd() {
+        return end;
+    }
 
-        this.pathFact = pathFact;
-        this.factName = factName;
+    public void setEnd(String end) {
+        this.end = end;
     }
 }
