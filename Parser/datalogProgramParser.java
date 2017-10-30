@@ -28,7 +28,10 @@ public class datalogProgramParser {
             }
             System.out.println();
         }
+        long start=System.currentTimeMillis();
         Naive();
+        long end=System.currentTimeMillis();
+        System.out.println((end-start)+"ms");
         for (fact f:facts) {
             System.out.print(f.getFunctionName() + "(" + f.getStart() + "," + f.getEnd()+ ") ");
         }
@@ -154,23 +157,6 @@ public class datalogProgramParser {
     }
 
     public void inference(int i,rule r,ArrayList<fact> newPath,ArrayList<function> substitution) {
-
-//        for (rule r : rules) {
-//            for (int k = 0; k <facts.size(); k++) {
-//                fact p=facts.get(k);
-//                for (int i = 0; i < facts.size() - r.getEdb().size() + 2; i++) {
-//                    ArrayList<function> substitution = new ArrayList<>();
-//                    for (int j = 0; j < r.getEdb().size(); j++) {
-//                        function f = new function();
-//                        f.setVariable(r.getEdb().get(j).getVariable());
-//                        if (r.getEdb().get(j).getFunctionName().equals(facts.get())) {
-//                            if (j==0){
-//                                substitution.add(substitute(f,p));
-//                            }else {
-//                                substitution.add(substitute(f, facts.get(i + j-1)));
-//                            }
-//                        }
-//        }
         if (i>=r.getEdb().size()){
             fact judgeDeposit=inferenceStep(substitution,r);
                     if (!judgeDeposit.getStart().equals("")) {
@@ -204,9 +190,91 @@ public class datalogProgramParser {
         if (substitution.size()>0) {
             substitution.remove(substitution.size() - 1);
         }
-//                }
-//            }
-//        }
+    }
+
+    public void semiNaive(){
+        boolean judge=true;
+        LinkedList<ArrayList<function>> memory=new LinkedList<>();
+        do {
+            ArrayList<fact> newFacts=new ArrayList<>();
+            ArrayList<function> substitution=new ArrayList<>();
+            for (rule r:rules) {
+                int i=0;
+                semiInference(i, r, newFacts, substitution,memory);
+            }
+            for (fact p:newFacts){
+                System.out.print(p.getFunctionName()+"("+p.getStart()+","+p.getEnd()+") ");
+            }
+            System.out.println();
+            if (newFacts.size()==0){
+                judge=false;
+            }
+            for(fact p:newFacts){
+                facts.add(p);
+            }
+        }while (judge);
+    }
+
+    public void semiInference(int i,rule r,ArrayList<fact> newPath,ArrayList<function> substitution,LinkedList<ArrayList<function>> memory) {
+        if (i>=r.getEdb().size()){
+            if (!findInMemory(substitution,memory)) {
+                fact judgeDeposit = inferenceStep(substitution, r);
+                if (!judgeDeposit.getStart().equals("")) {
+                    boolean repetition = false;
+                    for (fact check : facts) {
+                        if (check.getFunctionName().equals(judgeDeposit.getFunctionName()) && check.getStart().equals(judgeDeposit.getStart()) && check.getEnd().equals(judgeDeposit.getEnd())) {
+                            repetition = true;
+                            break;
+                        }
+                    }
+                    for (fact check : newPath) {
+                        if (check.getFunctionName().equals(judgeDeposit.getFunctionName()) && check.getStart().equals(judgeDeposit.getStart()) && check.getEnd().equals(judgeDeposit.getEnd())) {
+                            repetition = true;
+                            break;
+                        }
+                    }
+                    if (!repetition) {
+                        newPath.add(judgeDeposit);
+                        memory.add(substitution);
+                    }
+                }
+            }
+        }else {
+            for (fact f:facts){
+                if (r.getEdb().get(i).getFunctionName().equals(f.getFunctionName())) {
+                    function func = new function();
+                    func.setVariable(r.getEdb().get(i).getVariable());
+                    substitution.add(substitute(func, f));
+                    inference(i + 1, r, newPath, substitution);
+                }
+            }
+        }
+        if (substitution.size()>0) {
+            substitution.remove(substitution.size() - 1);
+        }
+    }
+
+    private boolean findInMemory(ArrayList<function> substitution,LinkedList<ArrayList<function>> memory){
+        boolean judge=false;
+        for (ArrayList<function> m:memory){
+            if (substitution.size()==m.size()) {
+                boolean allTure=true;
+                outer:
+                for (int i = 0; i < m.size(); i++) {
+                    for (int j = 0; j < m.get(i).getVariable().length; j++) {
+                        if (!substitution.get(i).getVariable()[j].equals(m.get(i).getVariable()[j])) {
+                            allTure=false;
+                            break outer;
+                        }
+                    }
+                }
+                if (allTure){
+                    judge=true;
+                    break;
+                }
+            }
+        }
+        return judge;
     }
 
     private function substitute(function oneOfEdb, fact p) {
