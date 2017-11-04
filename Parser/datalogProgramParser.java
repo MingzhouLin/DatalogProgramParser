@@ -2,6 +2,7 @@ package Parser;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -53,22 +54,37 @@ public class datalogProgramParser {
             BufferedReader br = new BufferedReader(reader);
             String line = "";
             String pattern1 = "(^[a-z]+)(\\([^\\(\\)]+\\)\\.$)";
-            String pattern2 = "([a-z]+\\([^\\(\\)]+\\)){1}(:-)(([a-z]+\\([^\\(\\)]+\\),)*([a-z]+\\([^\\(\\)]+\\)\\.)$)";
+            String pattern2 = "([a-z]+\\([^\\(\\)]+\\)){1}(:-)((\\w+\\([^\\(\\)]+\\),)*(\\w+\\([^\\(\\)]+\\)\\.)$)";
             Pattern r1= Pattern.compile(pattern1);
             Pattern r2= Pattern.compile(pattern2);
             boolean finishFacts=false;
             while ((line = br.readLine()) != null) {
                 Matcher m1 = r1.matcher(line);
                 Matcher m2 = r2.matcher(line);
+                //facts
                 if (m1.find()) {
                     if (finishFacts==false) {
                             String content = m1.group(2);
-                            fact newFact = new fact(m1.group(1), content.substring(1, 2), content.substring(3, 4));
-                            facts.add(newFact);
+                            String pattern3="(\\()((\\w+,)+(\\w))(\\))";
+                            Pattern r3=Pattern.compile(pattern3);
+                            Matcher m3=r3.matcher(content);
+                            if (m3.find()) {
+                                String[] constent=m3.group(2).split(",");
+                                for (String s:constent){
+                                    if (isUpperCase(s)){
+                                        System.out.println("Wrong:variable in facts");
+                                        break;
+                                    }
+                                }
+                                fact newFact = new fact(m1.group(1), content.substring(1, 2), content.substring(3, 4));
+                                facts.add(newFact);
+                            }else {
+                                System.out.println("Wrong:facts' format is wrong");
+                            }
                     }else {
                         System.out.println("Wrong: sequence is error.");
                     }
-                } else if (m2.find()){
+                } else if (m2.find()){   //rules
                     finishFacts=true;
                     rule newRule = parser(line);
                     rules.add(newRule);
@@ -81,21 +97,49 @@ public class datalogProgramParser {
         }
     }
 
+    public static boolean isUpperCase(String word) {
+        for (int i = 0; i < word.length(); i++) {
+            char c = word.charAt(i);
+            if (!Character.isUpperCase(c)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public rule parser(String formula) {
         int index = formula.indexOf(":-");
         String cause = "", idb = "";
         cause = formula.substring(index + 2);
         idb = formula.substring(0, index);
         rule clause = new rule();
-        String pattern = "([a-z]+)(\\()([^\\(\\)]+)(\\))";
+        String pattern = "(\\w+)(\\()([^\\(\\)]+)(\\))";
         Pattern r = Pattern.compile(pattern);
         Matcher m = r.matcher(cause);
+        //Put body into rule.
         while (m.find()) {
-            function edb = new function();
-            edb.setFunctionName(m.group(1));
-            edb.setVariable(m.group(3).split(","));
-            clause.setEdb(edb);
+            boolean afterEdb=false;
+            if (m.group(1).equals("greater")||m.group(1).equals("less")||m.group(1).equals("greaterOrEqual")||m.group(1).equals("lessOrEqual")||m.group(1).equals("equal")){
+                function buildIn=new function();
+                buildIn.setFunctionName(m.group(1));
+                buildIn.setVariable(m.group(3).split(","));
+                clause.setBuildIn(buildIn);
+                afterEdb=true;
+            }else {
+                if (afterEdb){
+                    System.out.println("error:The sequence of body is wrong!");
+                }
+                function edb = new function();
+                edb.setFunctionName(m.group(1));
+                edb.setVariable(m.group(3).split(","));
+                clause.setEdb(edb);
+            }
         }
+        //Check if Variables in buildIn appear in edb.
+        if (!balance(clause.getEdb(),clause.getBuildIn())){
+            System.out.println("error:Not any Variable in buildIn appears in edb");
+        }
+        //Put head into rule.
         m = r.matcher(idb);
         int count = 0;
         while (m.find()) {
@@ -108,10 +152,33 @@ public class datalogProgramParser {
             result.setVariable(m.group(3).split(","));
             clause.setIdb(result);
         }
+        //Check if Variables in body appear in head.
         if (!balance(clause)) {
             System.out.println("warning:Some variable in IDB can't be found in EDB");
         }
         return clause;
+    }
+
+    private boolean balance(ArrayList<function> edb,ArrayList<function> buildIn){
+        for (function f:buildIn){
+            for (String s:f.getVariable()){
+                if(!findInEdb(edb,s)){
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private boolean findInEdb(ArrayList<function> edb,String var){
+         for (function f:edb){
+             for (String s:f.getVariable()){
+                 if (s.equals(var)){
+                     return true;
+                 }
+             }
+         }
+         return false;
     }
 
     private boolean balance(rule r) {
@@ -134,6 +201,7 @@ public class datalogProgramParser {
         return judge;
     }
 
+    // Naive engine.
     public void Naive(){
         boolean judge=true;
         do {
@@ -192,6 +260,7 @@ public class datalogProgramParser {
         }
     }
 
+    //Semi-Naive engine.
     public void semiNaive(){
         boolean judge=true;
         LinkedList<ArrayList<function>> memory=new LinkedList<>();
@@ -213,6 +282,12 @@ public class datalogProgramParser {
                 facts.add(p);
             }
         }while (judge);
+//        for (ArrayList<function> arr:memory){
+//            for (function f:arr){
+//                f.printFuction();
+//            }
+//            System.out.println();
+//        }
     }
 
     public void semiInference(int i,rule r,ArrayList<fact> newPath,ArrayList<function> substitution,LinkedList<ArrayList<function>> memory) {
@@ -235,7 +310,11 @@ public class datalogProgramParser {
                     }
                     if (!repetition) {
                         newPath.add(judgeDeposit);
-                        memory.add(substitution);
+                        ArrayList<function> deposit=new ArrayList<>();
+                        for (function f:substitution){
+                            deposit.add(f);
+                        }
+                        memory.add(deposit);
                     }
                 }
             }
@@ -245,7 +324,7 @@ public class datalogProgramParser {
                     function func = new function();
                     func.setVariable(r.getEdb().get(i).getVariable());
                     substitution.add(substitute(func, f));
-                    inference(i + 1, r, newPath, substitution);
+                    semiInference(i + 1, r, newPath, substitution,memory);
                 }
             }
         }
@@ -318,10 +397,75 @@ public class datalogProgramParser {
                 }
             }
         }
-        if (newFact) {
+        if (newFact&&satisfyBuildIn(substitution,r.getBuildIn())) {
             newPath = new fact(r.getIdb().getFunctionName(),variable.get(0), variable.get(1));
         }
         return newPath;
+    }
+
+    private boolean satisfyBuildIn(ArrayList<function> substitution,ArrayList<function> buildIn){
+        for (function f:buildIn){
+            function func=new function();
+            func.setFunctionName(f.getFunctionName());
+            func.setVariable(new String[3]);
+            for (int i = 0; i <f.getVariable().length; i++){
+                func.setOneOfVariable(i,findVariableAndSubstitute(f.getVariable()[i],substitution));
+            }
+            if (!logicalJudge(func)){
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean logicalJudge(function f){
+        HashMap<String,Integer> map=new HashMap<>();
+        map.put("greater",1);
+        map.put("less",2);
+        map.put("greaterOrEqual",3);
+        map.put("lessOrEqual",4);
+        map.put("equal",5);
+        int i=map.get(f.getFunctionName());
+        switch (i){
+            case 1: {
+                if (Integer.parseInt(f.getVariable()[0].substring(1))>Integer.parseInt(f.getVariable()[1].substring(1))){
+                    return true;
+                }else return false;
+            }
+            case 2:{
+                if (Integer.parseInt(f.getVariable()[0].substring(1))<Integer.parseInt(f.getVariable()[1].substring(1))){
+                    return true;
+                }else return false;
+            }
+            case 3:{
+                if (Integer.parseInt(f.getVariable()[0].substring(1))>Integer.parseInt(f.getVariable()[1].substring(1))||Integer.parseInt(f.getVariable()[0].substring(1))==Integer.parseInt(f.getVariable()[1].substring(1))){
+                    return true;
+                }else return false;
+            }
+            case 4:{
+                if (Integer.parseInt(f.getVariable()[0].substring(1))>Integer.parseInt(f.getVariable()[1].substring(1))||Integer.parseInt(f.getVariable()[0].substring(1))==Integer.parseInt(f.getVariable()[1].substring(1))){
+                    return true;
+                }else return false;
+            }
+            case 5:{
+                if (Integer.parseInt(f.getVariable()[0].substring(1))==Integer.parseInt(f.getVariable()[1].substring(1))){
+                    return true;
+                }else return false;
+            }
+        }
+        return false;
+    }
+
+    private String findVariableAndSubstitute(String s,ArrayList<function> substitution){
+        outer:
+        for (function f:substitution){
+            for (String str:f.getVariable()){
+                if (s.equals(str.substring(0,1))){
+                    return str;
+                }
+            }
+        }
+        return "";
     }
 
     private boolean find(ArrayList<String> remember, String v) {
