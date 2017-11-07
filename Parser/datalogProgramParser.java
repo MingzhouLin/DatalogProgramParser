@@ -30,7 +30,7 @@ public class datalogProgramParser {
             System.out.println();
         }
         long start=System.currentTimeMillis();
-        Naive();
+        semiNaive();
         long end=System.currentTimeMillis();
         System.out.println((end-start)+"ms");
         for (fact f:facts) {
@@ -119,7 +119,7 @@ public class datalogProgramParser {
         //Put body into rule.
         while (m.find()) {
             boolean afterEdb=false;
-            if (m.group(1).equals("greater")||m.group(1).equals("less")||m.group(1).equals("greaterOrEqual")||m.group(1).equals("lessOrEqual")||m.group(1).equals("equal")){
+            if (m.group(1).equals("greater")||m.group(1).equals("less")||m.group(1).equals("equal")){
                 function buildIn=new function();
                 buildIn.setFunctionName(m.group(1));
                 buildIn.setVariable(m.group(3).split(","));
@@ -160,10 +160,15 @@ public class datalogProgramParser {
     }
 
     private boolean balance(ArrayList<function> edb,ArrayList<function> buildIn){
+        Pattern p=Pattern.compile("[A-Z]+");
+
         for (function f:buildIn){
             for (String s:f.getVariable()){
-                if(!findInEdb(edb,s)){
-                    return false;
+                Matcher m=p.matcher(s);
+                if (m.find()) {
+                    if (!findInEdb(edb, s)) {
+                        return false;
+                    }
                 }
             }
         }
@@ -263,15 +268,24 @@ public class datalogProgramParser {
     //Semi-Naive engine.
     public void semiNaive(){
         boolean judge=true;
-        LinkedList<ArrayList<function>> memory=new LinkedList<>();
+        ArrayList<fact> oldNewFacts=new ArrayList<>();
         do {
             ArrayList<fact> newFacts=new ArrayList<>();
             ArrayList<function> substitution=new ArrayList<>();
+            int count=0;
             for (rule r:rules) {
                 int i=0;
-                semiInference(i, r, newFacts, substitution,memory);
+                semiInference(i, r, newFacts, substitution,oldNewFacts);
+                if (newFacts.size()==0){
+                    count++;
+                }
             }
+            for (int i = 0; i <count; i++) {
+                rules.removeFirst();
+            }
+            oldNewFacts.clear();
             for (fact p:newFacts){
+                oldNewFacts.add(p);
                 System.out.print(p.getFunctionName()+"("+p.getStart()+","+p.getEnd()+") ");
             }
             System.out.println();
@@ -290,9 +304,8 @@ public class datalogProgramParser {
 //        }
     }
 
-    public void semiInference(int i,rule r,ArrayList<fact> newPath,ArrayList<function> substitution,LinkedList<ArrayList<function>> memory) {
+    public void semiInference(int i,rule r,ArrayList<fact> newPath,ArrayList<function> substitution,ArrayList<fact> oldNewFacts) {
         if (i>=r.getEdb().size()){
-            if (!findInMemory(substitution,memory)) {
                 fact judgeDeposit = inferenceStep(substitution, r);
                 if (!judgeDeposit.getStart().equals("")) {
                     boolean repetition = false;
@@ -310,21 +323,46 @@ public class datalogProgramParser {
                     }
                     if (!repetition) {
                         newPath.add(judgeDeposit);
-                        ArrayList<function> deposit=new ArrayList<>();
-                        for (function f:substitution){
-                            deposit.add(f);
-                        }
-                        memory.add(deposit);
                     }
                 }
-            }
         }else {
-            for (fact f:facts){
-                if (r.getEdb().get(i).getFunctionName().equals(f.getFunctionName())) {
-                    function func = new function();
-                    func.setVariable(r.getEdb().get(i).getVariable());
-                    substitution.add(substitute(func, f));
-                    semiInference(i + 1, r, newPath, substitution,memory);
+            if (i==0) {
+                for (fact f : facts) {
+                    if (r.getEdb().get(i).getFunctionName().equals(f.getFunctionName())) {
+                        function func = new function();
+                        func.setVariable(r.getEdb().get(i).getVariable());
+                        substitution.add(substitute(func, f));
+                        semiInference(i + 1, r, newPath, substitution, oldNewFacts);
+                    }
+                }
+            }else {
+                boolean judge=false;
+                for (fact f:oldNewFacts){
+                    if (substitution.get(0).getFunctionName().equals(f.getFunctionName())){
+                        if (substitution.get(0).getVariable()[0].equals(f.getStart())&&substitution.get(0).getVariable()[1].equals(f.getEnd())){
+                            judge=true;
+                            break;
+                        }
+                    }
+                }
+                if (judge){
+                    for (fact f : facts) {
+                        if (r.getEdb().get(i).getFunctionName().equals(f.getFunctionName())) {
+                            function func = new function();
+                            func.setVariable(r.getEdb().get(i).getVariable());
+                            substitution.add(substitute(func, f));
+                            semiInference(i + 1, r, newPath, substitution, oldNewFacts);
+                        }
+                    }
+                }else {
+                    for (fact f:oldNewFacts){
+                        if (r.getEdb().get(i).getFunctionName().equals(f.getFunctionName())) {
+                            function func = new function();
+                            func.setVariable(r.getEdb().get(i).getVariable());
+                            substitution.add(substitute(func, f));
+                            semiInference(i + 1, r, newPath, substitution, oldNewFacts);
+                        }
+                    }
                 }
             }
         }
@@ -333,31 +371,32 @@ public class datalogProgramParser {
         }
     }
 
-    private boolean findInMemory(ArrayList<function> substitution,LinkedList<ArrayList<function>> memory){
-        boolean judge=false;
-        for (ArrayList<function> m:memory){
-            if (substitution.size()==m.size()) {
-                boolean allTure=true;
-                outer:
-                for (int i = 0; i < m.size(); i++) {
-                    for (int j = 0; j < m.get(i).getVariable().length; j++) {
-                        if (!substitution.get(i).getVariable()[j].equals(m.get(i).getVariable()[j])) {
-                            allTure=false;
-                            break outer;
-                        }
-                    }
-                }
-                if (allTure){
-                    judge=true;
-                    break;
-                }
-            }
-        }
-        return judge;
-    }
+//    private boolean findInMemory(ArrayList<function> substitution,LinkedList<ArrayList<function>> memory){
+//        boolean judge=false;
+//        for (ArrayList<function> m:memory){
+//            if (substitution.size()==m.size()) {
+//                boolean allTure=true;
+//                outer:
+//                for (int i = 0; i < m.size(); i++) {
+//                    for (int j = 0; j < m.get(i).getVariable().length; j++) {
+//                        if (!substitution.get(i).getVariable()[j].equals(m.get(i).getVariable()[j])) {
+//                            allTure=false;
+//                            break outer;
+//                        }
+//                    }
+//                }
+//                if (allTure){
+//                    judge=true;
+//                    break;
+//                }
+//            }
+//        }
+//        return judge;
+//    }
 
     private function substitute(function oneOfEdb, fact p) {
         String s[] = new String[2];
+        oneOfEdb.setFunctionName(p.getFunctionName());
         s[0] = oneOfEdb.getVariable()[0] + p.getStart();
         s[1] = oneOfEdb.getVariable()[1] + p.getEnd();
         oneOfEdb.setVariable(s);
@@ -404,12 +443,22 @@ public class datalogProgramParser {
     }
 
     private boolean satisfyBuildIn(ArrayList<function> substitution,ArrayList<function> buildIn){
+        Pattern p1=Pattern.compile("[A-Z]+");
+        Pattern p2=Pattern.compile("[1-9]+");
         for (function f:buildIn){
             function func=new function();
             func.setFunctionName(f.getFunctionName());
             func.setVariable(new String[3]);
             for (int i = 0; i <f.getVariable().length; i++){
-                func.setOneOfVariable(i,findVariableAndSubstitute(f.getVariable()[i],substitution));
+                Matcher m1=p1.matcher(f.getVariable()[i]);
+                Matcher m2=p2.matcher((f.getVariable()[i]));
+                if (m1.find()){
+                    func.setOneOfVariable(i,findVariableAndSubstitute(f.getVariable()[i],substitution));
+                }else if (m2.find()){
+                    func.setOneOfVariable(i,f.getVariable()[i]);
+                }else {
+                    System.out.println("error:BuildIn format is wrong!");
+                }
             }
             if (!logicalJudge(func)){
                 return false;
@@ -422,35 +471,62 @@ public class datalogProgramParser {
         HashMap<String,Integer> map=new HashMap<>();
         map.put("greater",1);
         map.put("less",2);
-        map.put("greaterOrEqual",3);
-        map.put("lessOrEqual",4);
-        map.put("equal",5);
+        map.put("equal",3);
         int i=map.get(f.getFunctionName());
-        switch (i){
-            case 1: {
-                if (Integer.parseInt(f.getVariable()[0].substring(1))>Integer.parseInt(f.getVariable()[1].substring(1))){
-                    return true;
-                }else return false;
-            }
-            case 2:{
-                if (Integer.parseInt(f.getVariable()[0].substring(1))<Integer.parseInt(f.getVariable()[1].substring(1))){
-                    return true;
-                }else return false;
-            }
-            case 3:{
-                if (Integer.parseInt(f.getVariable()[0].substring(1))>Integer.parseInt(f.getVariable()[1].substring(1))||Integer.parseInt(f.getVariable()[0].substring(1))==Integer.parseInt(f.getVariable()[1].substring(1))){
-                    return true;
-                }else return false;
-            }
-            case 4:{
-                if (Integer.parseInt(f.getVariable()[0].substring(1))>Integer.parseInt(f.getVariable()[1].substring(1))||Integer.parseInt(f.getVariable()[0].substring(1))==Integer.parseInt(f.getVariable()[1].substring(1))){
-                    return true;
-                }else return false;
-            }
-            case 5:{
-                if (Integer.parseInt(f.getVariable()[0].substring(1))==Integer.parseInt(f.getVariable()[1].substring(1))){
-                    return true;
-                }else return false;
+        Pattern p1=Pattern.compile("[A-Z]+");
+        Matcher m1=p1.matcher(f.getVariable()[0]);
+        Matcher m2=p1.matcher(f.getVariable()[1]);
+        boolean first=m1.find();
+        boolean second=m2.find();
+        if (!first&&!second){
+            System.out.println("error:The Build-in makes no sense");
+        }else {
+            switch (i) {
+                case 1: {
+                    if (first&&second) {
+                        if (Integer.parseInt(f.getVariable()[0].substring(1)) > Integer.parseInt(f.getVariable()[1].substring(1))) {
+                            return true;
+                        } else return false;
+                    } else if (first && !second) {
+                        if (Integer.parseInt(f.getVariable()[0].substring(1)) > Integer.parseInt(f.getVariable()[1])) {
+                            return true;
+                        } else return false;
+                    } else if (!first && second) {
+                        if (Integer.parseInt(f.getVariable()[0]) > Integer.parseInt(f.getVariable()[1].substring(1))) {
+                            return true;
+                        } else return false;
+                    }
+                }
+                case 2: {
+                    if (first && second) {
+                        if (Integer.parseInt(f.getVariable()[0].substring(1)) < Integer.parseInt(f.getVariable()[1].substring(1))) {
+                            return true;
+                        } else return false;
+                    } else if (first && !second) {
+                        if (Integer.parseInt(f.getVariable()[0].substring(1)) < Integer.parseInt(f.getVariable()[1])) {
+                            return true;
+                        } else return false;
+                    } else if (!first && second) {
+                        if (Integer.parseInt(f.getVariable()[0]) < Integer.parseInt(f.getVariable()[1].substring(1))) {
+                            return true;
+                        } else return false;
+                    }
+                }
+                case 3: {
+                    if (first&& second) {
+                        if (Integer.parseInt(f.getVariable()[0].substring(1)) == Integer.parseInt(f.getVariable()[1].substring(1))) {
+                            return true;
+                        } else return false;
+                    } else if (first && !second) {
+                        if (Integer.parseInt(f.getVariable()[0].substring(1)) == Integer.parseInt(f.getVariable()[1])) {
+                            return true;
+                        } else return false;
+                    } else if (!first && second) {
+                        if (Integer.parseInt(f.getVariable()[0]) == Integer.parseInt(f.getVariable()[1].substring(1))) {
+                            return true;
+                        } else return false;
+                    }
+                }
             }
         }
         return false;
